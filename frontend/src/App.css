@@ -1,0 +1,57 @@
+.App {
+  text-align: center;
+}
+
+.video-container {
+  margin: 20px;
+}
+
+.controls {
+  margin: 20px;
+}
+
+.captures-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.captures-container img {
+  width: 200px;
+  height: auto;
+  border: 1px solid #ccc;
+}
+
+.login-form {
+  max-width: 300px;
+  margin: 50px auto;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.login-form div {
+  margin-bottom: 15px;
+}
+
+.login-form label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.login-form button {
+  width: 100%;
+  padding: 10px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
