@@ -1,9 +1,0 @@
-RewriteEngine on
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule . index.php [L]
-
-AuthType Basic
-AuthName "Restricted Access"
-AuthUserFile /etc/apache2/.htpasswd
-Require valid-user

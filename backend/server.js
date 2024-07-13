@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const sharp = require('sharp');
 
 const app = express();
 const port = 3001;
@@ -25,6 +26,7 @@ let motionProcess = null;
 
 // Directory to store captures
 const capturesDir = path.join(__dirname, 'captures');
+const thumbnailsDir = path.join(__dirname, 'thumbnails');
 
 // Middleware
 app.use(bodyParser.json());
@@ -32,6 +34,14 @@ app.use(cors({
   exposedHeaders: ['Authorization'], // Expose the Authorization header
 }));
 app.use(express.static('public'));
+
+// Ensure directories exist
+if (!fs.existsSync(capturesDir)) {
+  fs.mkdirSync(capturesDir);
+}
+if (!fs.existsSync(thumbnailsDir)) {
+  fs.mkdirSync(thumbnailsDir);
+}
 
 // Function definitions...
 const startMotion = () => {
@@ -45,7 +55,8 @@ const startMotion = () => {
       console.error(`Motion stderr: ${stderr}`);
       return;
     }
-    console.log(`Motion stdout: ${stdout}`);
+    // console.log(`Motion stdout: ${stdout}`);
+    console.log('Motion detection started.');
   });
 };
 
@@ -95,9 +106,9 @@ app.post('/login', (req, res) => {
   }
 });
 
-// Serve captured images
-app.get('/captures', authenticateJWT, (req, res) => {
-  fs.readdir(capturesDir, (err, files) => {
+// Serve thumbnail images
+app.get('/thumbnails', authenticateJWT, (req, res) => {
+  fs.readdir(thumbnailsDir, (err, files) => {
     if (err) {
       return res.status(500).send('Unable to scan captures directory');
     }
@@ -114,7 +125,47 @@ app.get('/captures/:fileName', authenticateJWT, (req, res) => {
     if (err) {
       return res.status(404).send('File not found');
     }
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(data);
+  });
+});
+
+// Endpoint to delete an image
+app.delete('/captures/:fileName', authenticateJWT, (req, res) => {
+  const { fileName } = req.params;
+  const imagePath = path.join(capturesDir, fileName);
+  const thumbnailPath = path.join(thumbnailsDir, fileName);
+
+  // Delete the image file
+  fs.unlink(imagePath, (err) => {
+    if (err) {
+      console.error('Error deleting image:', err);
+      return res.status(500).send('Failed to delete image');
+    }
+
+    // Delete the thumbnail file
+    fs.unlink(thumbnailPath, (err) => {
+      if (err) {
+        console.error('Error deleting thumbnail:', err);
+        return res.status(500).send('Failed to delete thumbnail');
+      }
+
+      res.status(200).send('Image and thumbnail deleted successfully');
+    });
+  });
+});
+
+
+// Serve individual thumbnail images
+app.get('/thumbnails/:fileName', authenticateJWT, (req, res) => {
+  const { fileName } = req.params;
+  const filePath = path.join(thumbnailsDir, fileName);
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      return res.status(404).send('File not found');
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
     res.send(data);
   });
 });
@@ -131,21 +182,34 @@ app.post('/stop', authenticateJWT, (req, res) => {
   res.status(200).send('Motion detection stopped');
 });
 
-// Example route to save captured images (POST request)
-app.post('/capture/image', authenticateJWT, (req, res) => {
-  const imageData = req.body.imageData; // Assuming imageData is sent in the request
-  const imageName = `capture_${Date.now()}.jpg`; // Example filename generation
+// Endpoint to save captured images
+app.post('/capture/image', authenticateJWT, async (req, res) => {
+  const imageData = Buffer.from(req.body.imageData, 'base64'); // Assuming imageData is base64 encoded
+  const imageName = `capture_${Date.now()}.jpg`; 
   const imagePath = path.join(capturesDir, imageName);
+  const thumbnailPath = path.join(thumbnailsDir, `thumb_${imageName}`);
 
-  fs.writeFile(imagePath, imageData, (err) => {
-    if (err) {
-      console.error('Error saving image:', err);
-      return res.status(500).send('Failed to save image');
-    }
+  try {
+    // Save full-size image
+    await sharp(imageData)
+      .resize(800, 600) // Resize to full resolution if needed
+      .toFile(imagePath);
+
     console.log('Image saved successfully:', imageName);
+
+    // Save thumbnail image
+    await sharp(imageData)
+      .resize(120, 80) // Resize to thumbnail resolution
+      .toFile(thumbnailPath);
+
+    console.log('Thumbnail saved successfully:', thumbnailPath);
+    
     limitCaptures(); // Ensure only last 10 images are kept
     res.status(200).send('Image saved');
-  });
+  } catch (err) {
+    console.error('Error saving image:', err);
+    res.status(500).send('Failed to save image');
+  }
 });
 
 // Function to limit images to the last 10
@@ -169,6 +233,15 @@ function limitCaptures() {
           console.error('Error deleting file:', err);
         } else {
           console.log('Deleted old capture:', file);
+        }
+      });
+
+      // Also delete the corresponding thumbnails
+      fs.unlink(path.join(thumbnailsDir, file), err => {
+        if (err) {
+          console.error('Error deleting thumbnail:', err);
+        } else {
+          console.log('Deleted old thumbnail:', file);
         }
       });
     });

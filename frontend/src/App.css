@@ -10,14 +10,14 @@
   margin: 20px;
 }
 
-.captures-container {
+.thumbnails-container {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
 }
 
-.captures-container img {
+.thumbnails-container img {
   width: 200px;
   height: auto;
   border: 1px solid #ccc;

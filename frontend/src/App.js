@@ -1,31 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Modal from './Modal';
 import './App.css';
 
 const App = () => {
-  const [captures, setCaptures] = useState([]);
+  const [thumbnails, setThumbnails] = useState([]);
   const [isMotionActive, setIsMotionActive] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [isLoggedIn, setIsLoggedIn] = useState(!!token);
-
-  const videoUrl = process.env.REACT_APP_LIVE_URL || 'http://vattu.ddns.net:8081';
+  const [showModal, setShowModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     if (token) {
-      fetchCaptures();
+      fetchThumbnails();
+      const interval = setInterval(fetchThumbnails, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval);
     }
   }, [token]);
 
-  const fetchCaptures = async () => {
+  const fetchThumbnails = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/captures`, {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/thumbnails`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      setCaptures(response.data);
+      setThumbnails(response.data);
     } catch (error) {
-      console.error('Error fetching captures:', error);
+      console.error('Error fetching thumbnails:', error);
     }
   };
 
@@ -57,14 +60,11 @@ const App = () => {
 
   const handleLogin = async (username, password) => {
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/login`, {
-        username,
-        password
-      });
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/login`, { username, password });
       setToken(response.data.token);
       localStorage.setItem('token', response.data.token);
       setIsLoggedIn(true);
-      fetchCaptures();
+      fetchThumbnails();
     } catch (error) {
       console.error('Error logging in:', error);
       alert('Login failed');
@@ -77,6 +77,30 @@ const App = () => {
     setIsLoggedIn(false);
   };
 
+  const handleImageClick = (src) => {
+    setSelectedImage(src);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedImage(null);
+  };
+
+  const handleDeleteImage = async (fileName) => {
+    try {
+      await axios.delete(`${process.env.REACT_APP_API_URL}/captures/${fileName}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      // Refresh thumbnails after deletion
+      fetchThumbnails();
+    } catch (error) {
+      console.error('Error deleting image:', error);
+    }
+  };
+
   if (!isLoggedIn) {
     return <LoginForm onLogin={handleLogin} />;
   }
@@ -84,27 +108,37 @@ const App = () => {
   return (
     <div className="App">
       <h1>Webcam Live Feed</h1>
-
       <div className="video-container">
-        <img src={videoUrl} width="320" height="240" />
+        <img src={process.env.REACT_APP_LIVE_URL} alt="Live Feed" />
       </div>
-
       <div className="controls">
         <button onClick={startMotion} disabled={isMotionActive}>Start Motion Detection</button>
         <button onClick={stopMotion} disabled={!isMotionActive}>Stop Motion Detection</button>
         <button onClick={handleLogout}>Logout</button>
       </div>
       <h2>Captured Images</h2>
-      <div className="captures-container">
-        {captures.map((capture, index) => (
-          <AuthenticatedImage key={index} src={`${process.env.REACT_APP_API_URL}/captures/${capture}`} alt="Capture" />
-        ))}
+      <div className="thumbnails-container">
+      {thumbnails.map((capture, index) => (
+        <div key={index} className="thumbnail-wrapper">
+          <AuthenticatedImage
+            src={`${process.env.REACT_APP_API_URL}/thumbnails/${capture}`}
+            alt="Capture"
+            onClick={() => handleImageClick(`${process.env.REACT_APP_API_URL}/captures/${capture}`)}
+          />
+          <button onClick={() => handleDeleteImage(capture)}>Delete</button>
+        </div>
+      ))}
       </div>
+      {showModal && (
+        <Modal show={showModal} onClose={handleCloseModal}>
+          <AuthenticatedImage src={selectedImage} alt="Enlarged Capture" fullScreen />
+        </Modal>
+      )}
     </div>
   );
 };
 
-const AuthenticatedImage = ({ src, alt }) => {
+const AuthenticatedImage = ({ src, alt, onClick, fullScreen }) => {
   const [imageSrc, setImageSrc] = useState('');
 
   useEffect(() => {
@@ -119,6 +153,11 @@ const AuthenticatedImage = ({ src, alt }) => {
         });
         const url = URL.createObjectURL(response.data);
         setImageSrc(url);
+
+        // Clean up the URL.createObjectURL
+        return () => {
+          URL.revokeObjectURL(url);
+        };
       } catch (error) {
         console.error('Error fetching image:', error);
       }
@@ -127,7 +166,14 @@ const AuthenticatedImage = ({ src, alt }) => {
     fetchImage();
   }, [src]);
 
-  return <img src={imageSrc} alt={alt} />;
+  return (
+    <img
+      src={imageSrc}
+      alt={alt}
+      onClick={onClick}
+      style={fullScreen ? { width: '100%', height: '100%' } : {}}
+    />
+  );
 };
 
 const LoginForm = ({ onLogin }) => {
